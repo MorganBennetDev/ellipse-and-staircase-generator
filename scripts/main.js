@@ -53,7 +53,10 @@ const utils = {
 
     normalizeAngle(a) {
         let angle = a % (2 * Math.PI);
-        return angle < 0 ? angle + 2 * Math.PI : angle;
+        if (angle < 0) {
+            return angle + 2 * Math.PI;
+        }
+        return angle;
     },
 };
 
@@ -402,7 +405,7 @@ class Render2D {
                 const dx = i - cx;
                 const dy = j - cy;
                 const angle = Math.atan2(dy, dx);
-                const normalizedAngle = angle < 0 ? angle + 2 * Math.PI : angle;
+                const normalizedAngle = utils.normalizeAngle(angle);
 
                 let inAngleRange = false;
                 if (normStart <= normEnd) {
@@ -903,8 +906,12 @@ class Render3D {
         const angleStep = (stepAngleDegrees * Math.PI) / 180;
         const startingAngleRadians = (startingAngle * Math.PI) / 180;
 
-        const stepStart = showSingleStep ? currentStep : 0;
-        const stepEnd = showSingleStep ? currentStep + 1 : totalHeight;
+        let stepStart = 0;
+        let stepEnd = totalHeight;
+        if (showSingleStep) {
+            stepStart = currentStep;
+            stepEnd = currentStep + 1;
+        }
         const stepHeight = 0.5;
 
         const allPositions = [];
@@ -1035,12 +1042,18 @@ class Render3D {
                 const angle = Math.atan2(dy, dx);
                 const normalizedAngle = utils.normalizeAngle(angle);
 
-                const inAngleRange =
-                    normStart <= normEnd
-                        ? normalizedAngle >= normStart &&
-                          normalizedAngle <= normEnd
-                        : normalizedAngle >= normStart ||
-                          normalizedAngle <= normEnd;
+                const inAngleRange = (() => {
+                    if (normStart <= normEnd) {
+                        return (
+                            normalizedAngle >= normStart &&
+                            normalizedAngle <= normEnd
+                        );
+                    }
+                    return (
+                        normalizedAngle >= normStart ||
+                        normalizedAngle <= normEnd
+                    );
+                })();
 
                 const inRing =
                     !utils.inside(i, j, cx, cy, inner_rx, inner_ry) &&
@@ -1291,17 +1304,31 @@ function updateBuilderDisplay() {
         `Height: ${state.staircase.totalHeight} blocks`;
     document.getElementById("builder-rotation").textContent =
         `Rotation: ${state.staircase.rotationDegrees}°`;
-    document.getElementById("builder-vertical").textContent =
-        `Vertical: ${state.staircase.verticalDirection === 1 ? "Up" : "Down"}`;
-    document.getElementById("builder-spiral").textContent =
-        `Spiral: ${state.staircase.rotationDirection === 1 ? "CCW" : "CW"}`;
+
+    if (state.staircase.verticalDirection === 1) {
+        document.getElementById("builder-vertical").textContent =
+            `Vertical: Up`;
+    } else {
+        document.getElementById("builder-vertical").textContent =
+            `Vertical: Down`;
+    }
+
+    if (state.staircase.rotationDirection === 1) {
+        document.getElementById("builder-spiral").textContent = `Spiral: CCW`;
+    } else {
+        document.getElementById("builder-spiral").textContent = `Spiral: CW`;
+    }
 }
 
 let renderer3D = new Render3D();
 let renderer2D = null;
 
 function toggleViewMode() {
-    state.viewMode = state.viewMode === "2d" ? "3d" : "2d";
+    if (state.viewMode === "2d") {
+        state.viewMode = "3d";
+    } else if (state.viewMode === "3d") {
+        state.viewMode = "2d";
+    }
 
     const canvas2D = document.getElementById("myCanvas");
     const scene3D = document.getElementById("scene3d");
