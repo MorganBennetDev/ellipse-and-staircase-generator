@@ -68,17 +68,6 @@ const utils = {
     },
 
     boundary(x, y, cx, cy, rx, ry) {
-        // let count = 0;
-        // count += this.inside(x - 0.5, y - 0.5, cx, cy, rx, ry) ? 1 : 0;
-        // count += this.inside(x + 0.5, y - 0.5, cx, cy, rx, ry) ? 1 : 0;
-        // count += this.inside(x - 0.5, y + 0.5, cx, cy, rx, ry) ? 1 : 0;
-        // count += this.inside(x + 0.5, y + 0.5, cx, cy, rx, ry) ? 1 : 0;
-        // let neighbors = 0;
-        // neighbors += this.inside(x - 1, y, cx, cy, rx, ry) ? 1 : 0;
-        // neighbors += this.inside(x + 1, y, cx, cy, rx, ry) ? 1 : 0;
-        // neighbors += this.inside(x, y - 1, cx, cy, rx, ry) ? 1 : 0;
-        // neighbors += this.inside(x, y + 1, cx, cy, rx, ry) ? 1 : 0;
-        // return neighbors !== 0 && neighbors !== 4 && count !== 4 && count !== 0;
         const nx = (x - cx) / rx;
         const ny = (y - cy) / ry;
         const z = nx * nx + ny * ny;
@@ -239,7 +228,6 @@ const controlConfigs = {
         snap: 1,
     },
 };
-
 
 class Render2D {
     constructor(ctx) {
@@ -443,7 +431,6 @@ class Render2D {
     }
 }
 
-
 const render2D = {
     paintGrid(ctx) {
         ctx.beginPath();
@@ -642,56 +629,65 @@ const render2D = {
     },
 };
 
-const render3D = {
-    init() {
-        try {
-            const container = document.getElementById("scene3d");
-            const rect = container.getBoundingClientRect();
+class Render3D {
+    constructor() {
+        this.keys = {};
+        this.needsRender = false;
+        this.animationId = null;
+        this.scene = null;
+        this.camera = null;
+        this.cameraTarget = new THREE.Vector3(0, 0, 0);
+        this.renderer = null;
+        this.initialized = false;
 
-            state.view3D.scene = new THREE.Scene();
-            state.view3D.scene.background = new THREE.Color(
+        this.container = document.getElementById("scene3d");
+        const rect = this.container.getBoundingClientRect();
+
+        try {
+            this.scene = new THREE.Scene();
+            this.scene.background = new THREE.Color(
                 utils.isDarkTheme() ? 0x141218 : 0xfefbff,
             );
 
-            state.view3D.camera = new THREE.PerspectiveCamera(
+            this.camera = new THREE.PerspectiveCamera(
                 75,
                 rect.width / rect.height,
                 0.1,
                 1000,
             );
-            state.view3D.camera.position.set(25, 20, 25);
+            this.camera.position.set(25, 20, 25);
 
-            state.view3D.cameraTarget = new THREE.Vector3(0, 0, 0);
-            state.view3D.camera.lookAt(state.view3D.cameraTarget);
+            this.camera.lookAt(this.cameraTarget);
 
-            state.view3D.renderer = new THREE.WebGLRenderer({
+            this.renderer = new THREE.WebGLRenderer({
                 antialias: true,
             });
-            state.view3D.renderer.setSize(rect.width, rect.height);
-            state.view3D.renderer.shadowMap.enabled = false;
+            this.renderer.setSize(rect.width, rect.height);
+            this.renderer.shadowMap.enabled = false;
 
-            container.appendChild(state.view3D.renderer.domElement);
+            this.container.appendChild(state.view3D.renderer.domElement);
 
             this.setupLighting();
             this.setupControls(container);
             this.startAnimationLoop();
             this.generateStaircase();
+            this.initialized = true;
         } catch (error) {
             console.error("Failed to initialize 3D mode:", error);
             alert("3D visualization failed to initialize.");
         }
-    },
+    }
 
     setupLighting() {
         const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-        state.view3D.scene.add(ambientLight);
+        this.scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
         directionalLight.position.set(50, 50, 25);
-        state.view3D.scene.add(directionalLight);
-    },
+        this.scene.add(directionalLight);
+    }
 
-    setupControls(container) {
+    setupControls() {
         let mouseDown = false;
         let mouseX = 0;
         let mouseY = 0;
@@ -707,24 +703,23 @@ const render3D = {
 
             const deltaX = e.clientX - mouseX;
             const deltaY = e.clientY - mouseY;
-            const { camera, cameraTarget } = state.view3D;
 
             if (e.shiftKey) {
                 const right = new THREE.Vector3();
                 const up = new THREE.Vector3(0, 1, 0);
-                camera.getWorldDirection(right);
+                this.camera.getWorldDirection(right);
                 right.cross(up).normalize();
 
                 const panSpeed = 0.05;
                 const panX = right.clone().multiplyScalar(-deltaX * panSpeed);
                 const panY = up.clone().multiplyScalar(deltaY * panSpeed);
 
-                camera.position.add(panX).add(panY);
-                cameraTarget.add(panX).add(panY);
+                this.camera.position.add(panX).add(panY);
+                this.cameraTarget.add(panX).add(panY);
             } else {
                 const offset = new THREE.Vector3().subVectors(
-                    camera.position,
-                    cameraTarget,
+                    this.camera.position,
+                    this.cameraTarget,
                 );
                 const spherical = new THREE.Spherical().setFromVector3(offset);
 
@@ -736,13 +731,13 @@ const render3D = {
                 );
 
                 offset.setFromSpherical(spherical);
-                camera.position.copy(cameraTarget).add(offset);
+                this.camera.position.copy(this.cameraTarget).add(offset);
             }
 
-            camera.lookAt(cameraTarget);
+            this.camera.lookAt(this.cameraTarget);
             mouseX = e.clientX;
             mouseY = e.clientY;
-            state.view3D.needsRender = true;
+            this.needsRender = true;
         };
 
         const handleMouseUp = () => {
@@ -751,129 +746,129 @@ const render3D = {
 
         const handleWheel = (e) => {
             e.preventDefault();
-            const { camera, cameraTarget } = state.view3D;
             const offset = new THREE.Vector3().subVectors(
-                camera.position,
-                cameraTarget,
+                this.camera.position,
+                this.cameraTarget,
             );
             const distance = offset.length();
             const newDistance = utils.clamp(distance + e.deltaY * 0.01, 5, 100);
 
             offset.normalize().multiplyScalar(newDistance);
-            camera.position.copy(cameraTarget).add(offset);
-            camera.lookAt(cameraTarget);
-            state.view3D.needsRender = true;
+            this.camera.position.copy(this.cameraTarget).add(offset);
+            this.camera.lookAt(this.cameraTarget);
+            this.needsRender = true;
         };
 
-        container.addEventListener("mousedown", handleMouseDown);
-        container.addEventListener("mousemove", handleMouseMove);
-        container.addEventListener("mouseup", handleMouseUp);
-        container.addEventListener("wheel", handleWheel, { passive: false });
-    },
+        this.container.addEventListener("mousedown", handleMouseDown);
+        this.container.addEventListener("mousemove", handleMouseMove);
+        this.container.addEventListener("mouseup", handleMouseUp);
+        this.container.addEventListener("wheel", handleWheel, {
+            passive: false,
+        });
+    }
 
     startAnimationLoop() {
         const animate = () => {
-            state.view3D.animationId = requestAnimationFrame(animate);
+            this.animationId = requestAnimationFrame(animate);
 
-            const { camera, cameraTarget, keys } = state.view3D;
             let moved = false;
             const forward = new THREE.Vector3();
             const right = new THREE.Vector3();
 
-            camera.getWorldDirection(forward);
+            this.camera.getWorldDirection(forward);
             forward.y = 0;
             forward.normalize();
 
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-            if (keys["w"] || keys["arrowup"]) {
-                camera.position.addScaledVector(
+            if (this.keys["w"] || this.keys["arrowup"]) {
+                this.camera.position.addScaledVector(
                     forward,
                     CONSTANTS.CAMERA_MOVE_SPEED,
                 );
-                cameraTarget.addScaledVector(
+                this.cameraTarget.addScaledVector(
                     forward,
                     CONSTANTS.CAMERA_MOVE_SPEED,
                 );
                 moved = true;
             }
-            if (keys["s"] || keys["arrowdown"]) {
-                camera.position.addScaledVector(
+            if (this.keys["s"] || this.keys["arrowdown"]) {
+                this.camera.position.addScaledVector(
                     forward,
                     -CONSTANTS.CAMERA_MOVE_SPEED,
                 );
-                cameraTarget.addScaledVector(
+                this.cameraTarget.addScaledVector(
                     forward,
-                    -CONSTANTS.CAMERA_MOVE_SPEED,
-                );
-                moved = true;
-            }
-            if (keys["a"] || keys["arrowleft"]) {
-                camera.position.addScaledVector(
-                    right,
-                    -CONSTANTS.CAMERA_MOVE_SPEED,
-                );
-                cameraTarget.addScaledVector(
-                    right,
                     -CONSTANTS.CAMERA_MOVE_SPEED,
                 );
                 moved = true;
             }
-            if (keys["d"] || keys["arrowright"]) {
-                camera.position.addScaledVector(
+            if (this.keys["a"] || this.keys["arrowleft"]) {
+                this.camera.position.addScaledVector(
+                    right,
+                    -CONSTANTS.CAMERA_MOVE_SPEED,
+                );
+                this.cameraTarget.addScaledVector(
+                    right,
+                    -CONSTANTS.CAMERA_MOVE_SPEED,
+                );
+                moved = true;
+            }
+            if (this.keys["d"] || this.keys["arrowright"]) {
+                this.camera.position.addScaledVector(
                     right,
                     CONSTANTS.CAMERA_MOVE_SPEED,
                 );
-                cameraTarget.addScaledVector(
+                this.cameraTarget.addScaledVector(
                     right,
                     CONSTANTS.CAMERA_MOVE_SPEED,
                 );
                 moved = true;
             }
-            if (keys["q"]) {
-                camera.position.y += CONSTANTS.CAMERA_MOVE_SPEED;
-                cameraTarget.y += CONSTANTS.CAMERA_MOVE_SPEED;
+            if (this.keys["q"]) {
+                this.camera.position.y += CONSTANTS.CAMERA_MOVE_SPEED;
+                this.cameraTarget.y += CONSTANTS.CAMERA_MOVE_SPEED;
                 moved = true;
             }
-            if (keys["e"]) {
-                camera.position.y -= CONSTANTS.CAMERA_MOVE_SPEED;
-                cameraTarget.y -= CONSTANTS.CAMERA_MOVE_SPEED;
+            if (this.keys["e"]) {
+                this.camera.position.y -= CONSTANTS.CAMERA_MOVE_SPEED;
+                this.cameraTarget.y -= CONSTANTS.CAMERA_MOVE_SPEED;
                 moved = true;
             }
 
             if (moved) {
-                camera.lookAt(cameraTarget);
-                state.view3D.needsRender = true;
+                this.camera.lookAt(this.cameraTarget);
+                this.needsRender = true;
             }
 
-            if (state.view3D.needsRender) {
+            if (this.needsRender) {
                 this.render();
-                state.view3D.needsRender = false;
+                this.needsRender = false;
             }
         };
 
         animate();
-    },
+    }
 
     cleanup() {
-        if (state.view3D.animationId) {
-            cancelAnimationFrame(state.view3D.animationId);
-            state.view3D.animationId = null;
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
         }
 
-        if (state.view3D.renderer) {
-            state.view3D.renderer.dispose();
+        if (this.renderer) {
+            this.renderer.dispose();
             const container = document.getElementById("scene3d");
             if (
                 container &&
-                state.view3D.renderer.domElement.parentNode === container
+                this.renderer.domElement.parentNode === container
             ) {
-                container.removeChild(state.view3D.renderer.domElement);
+                container.removeChild(this.renderer.domElement);
             }
         }
 
-        if (state.view3D.scene) {
-            state.view3D.scene.traverse((object) => {
+        if (this.scene) {
+            this.scene.traverse((object) => {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
@@ -885,26 +880,25 @@ const render3D = {
             });
         }
 
-        state.view3D.scene = null;
-        state.view3D.camera = null;
-        state.view3D.renderer = null;
-    },
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+    }
 
     render() {
-        const { renderer, scene, camera } = state.view3D;
-        if (renderer && scene && camera) {
-            renderer.render(scene, camera);
+        if (this.renderer && this.scene && this.camera) {
+            this.renderer.render(this.scene, this.camera);
         }
-    },
+    }
 
     updateTheme() {
-        if (state.view3D.scene) {
-            state.view3D.scene.background = new THREE.Color(
+        if (this.scene) {
+            this.scene.background = new THREE.Color(
                 utils.isDarkTheme() ? 0x141218 : 0xfefbff,
             );
 
             const isDark = utils.isDarkTheme();
-            state.view3D.scene.traverse((object) => {
+            this.scene.traverse((object) => {
                 if (object.isMesh || object.isLine) {
                     if (object.userData.isBlock && object.material) {
                         if (object.material.color) {
@@ -927,20 +921,20 @@ const render3D = {
                 }
             });
 
-            state.view3D.needsRender = true;
+            this.needsRender = true;
         }
-    },
+    }
 
     generateStaircase() {
-        if (!state.view3D.scene) return;
+        if (!this.scene) return;
 
-        const existingObjects = state.view3D.scene.children.filter(
+        const existingObjects = this.scene.children.filter(
             (child) => child.userData.isBlock || child.userData.isEllipse,
         );
         existingObjects.forEach((obj) => {
             if (obj.geometry) obj.geometry.dispose();
             if (obj.material) obj.material.dispose();
-            state.view3D.scene.remove(obj);
+            this.scene.remove(obj);
         });
 
         const {
@@ -1064,8 +1058,8 @@ const render3D = {
             );
         }
 
-        state.view3D.needsRender = true;
-    },
+        this.needsRender = true;
+    }
 
     getStepPositions(
         cx,
@@ -1121,7 +1115,7 @@ const render3D = {
         }
 
         return positions;
-    },
+    }
 
     createInstancedMesh(geometry, material, positions, matrix, withEdges) {
         if (positions.length === 0) return;
@@ -1156,12 +1150,12 @@ const render3D = {
                 edgesMesh.setMatrixAt(i, matrix);
             });
             edgesMesh.userData.isBlock = true;
-            state.view3D.scene.add(edgesMesh);
+            this.scene.add(edgesMesh);
         }
 
         mesh.userData.isBlock = true;
-        state.view3D.scene.add(mesh);
-    },
+        this.scene.add(mesh);
+    }
 
     drawEllipseRing(radiusX, radiusY, height, color, opacity, type) {
         const curve = new THREE.EllipseCurve(
@@ -1188,9 +1182,17 @@ const render3D = {
         ellipse.userData.isEllipse = true;
         ellipse.userData.ellipseType = type;
 
-        state.view3D.scene.add(ellipse);
-    },
-};
+        this.scene.add(ellipse);
+    }
+
+    make_stale() {
+        const rect = this.container.getBoundingClientRect();
+        this.renderer.setSize(rect.width, rect.height);
+        this.camera.aspect = rect.width / rect.height;
+        this.camera.updateProjectionMatrix();
+        this.needsRender = true;
+    }
+}
 
 const keyHandlers = {
     init() {
@@ -1352,6 +1354,8 @@ function updateBuilderDisplay() {
         `Spiral: ${state.staircase.rotationDirection === 1 ? "CCW" : "CW"}`;
 }
 
+let renderer3D = null;
+
 function toggleViewMode() {
     state.viewMode = state.viewMode === "2d" ? "3d" : "2d";
 
@@ -1376,17 +1380,10 @@ function toggleViewMode() {
         }
 
         if (!state.view3D.scene) {
-            render3D.init();
+            renderer3D = new Render3D();
         } else {
-            render3D.generateStaircase();
-            if (state.view3D.renderer) {
-                const container = document.getElementById("scene3d");
-                const rect = container.getBoundingClientRect();
-                state.view3D.renderer.setSize(rect.width, rect.height);
-                state.view3D.camera.aspect = rect.width / rect.height;
-                state.view3D.camera.updateProjectionMatrix();
-                state.view3D.needsRender = true;
-            }
+            renderer3D.generateStaircase();
+            renderer3D.make_stale();
         }
     } else {
         canvas2D.style.display = "block";
@@ -1435,7 +1432,7 @@ function resizeCanvas() {
     can.height = elHeight;
 
     const ctx = can.getContext("2d");
-    (new Render2D(ctx)).draw();
+    new Render2D(ctx).draw();
 }
 
 function toggleTheme() {
