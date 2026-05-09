@@ -34,22 +34,8 @@ const state = {
         showSingleStep: false,
         startingAngle: 0,
     },
-    canvas: {
-        width: 100,
-        height: 100,
-        scale: [0, 0, 1, 1],
-    },
     viewMode: "3d",
     builderMode: false,
-    view3D: {
-        scene: null,
-        camera: null,
-        renderer: null,
-        cameraTarget: null,
-        keys: {},
-        needsRender: false,
-        animationId: null,
-    },
 };
 
 const utils = {
@@ -232,6 +218,12 @@ const controlConfigs = {
 class Render2D {
     constructor(ctx) {
         this.ctx = ctx;
+        this.canvas = document.getElementById("myCanvas");
+        this.container = document.getElementById("canvas-container");
+        this.width = 0;
+        this.height = 0;
+        this.scale = [0, 0, 1, 1];
+        this.resizeCanvas();
     }
 
     paintGrid() {
@@ -242,20 +234,25 @@ class Render2D {
         this.ctx.lineWidth = 1;
 
         const { width, height } = state.ellipse;
-        const { width: canWidth, height: canHeight, scale } = state.canvas;
 
         for (let i = 0; i <= width; i++) {
-            let x = (i * canWidth) / width;
-            if (x >= canWidth) x = canWidth - 1;
-            this.ctx.moveTo(x + 0.5 + scale[0], scale[1]);
-            this.ctx.lineTo(x + 0.5 + scale[0], canHeight + scale[1]);
+            let x = (i * this.width) / width;
+            if (x >= this.width) x = this.width - 1;
+            this.ctx.moveTo(x + 0.5 + this.scale[0], this.scale[1]);
+            this.ctx.lineTo(
+                x + 0.5 + this.scale[0],
+                this.height + this.scale[1],
+            );
         }
 
         for (let i = 0; i <= height; i++) {
-            let y = (i * canHeight) / height;
-            if (y >= canHeight) y = canHeight - 1;
-            this.ctx.moveTo(scale[0], y + 0.5 + scale[1]);
-            this.ctx.lineTo(canWidth + scale[0], y + 0.5 + scale[1]);
+            let y = (i * this.height) / height;
+            if (y >= this.height) y = this.height - 1;
+            this.ctx.moveTo(this.scale[0], y + 0.5 + this.scale[1]);
+            this.ctx.lineTo(
+                this.width + this.scale[0],
+                y + 0.5 + this.scale[1],
+            );
         }
 
         this.ctx.stroke();
@@ -263,16 +260,15 @@ class Render2D {
 
     drawBlock(x, y) {
         const { width, height } = state.ellipse;
-        const { width: canWidth, height: canHeight, scale } = state.canvas;
 
-        const x1 = (x * canWidth) / width;
-        const y1 = (y * canHeight) / height;
-        const x2 = ((x + 1) * canWidth) / width;
-        const y2 = ((y + 1) * canHeight) / height;
+        const x1 = (x * this.width) / width;
+        const y1 = (y * this.height) / height;
+        const x2 = ((x + 1) * this.width) / width;
+        const y2 = ((y + 1) * this.height) / height;
         const w = x2 - x1 + 0.75;
         const h = y2 - y1 + 0.75;
 
-        this.ctx.fillRect(x1 + scale[0], y1 + scale[1], w, h);
+        this.ctx.fillRect(x1 + this.scale[0], y1 + this.scale[1], w, h);
     }
 
     getStepData(stepIndex) {
@@ -382,10 +378,13 @@ class Render2D {
             ellipseInner: rootStyles.getPropertyValue("--ellipse-inner").trim(),
         };
 
-        const { width: canWidth, height: canHeight, scale } = state.canvas;
-
         this.ctx.fillStyle = colors.canvasBg;
-        this.ctx.fillRect(scale[0], scale[1], canWidth, canHeight);
+        this.ctx.fillRect(
+            this.scale[0],
+            this.scale[1],
+            this.width,
+            this.height,
+        );
 
         this.ctx.fillStyle = colors.blockColor;
         for (let j = 0; j < eh; j++) {
@@ -396,15 +395,15 @@ class Render2D {
             }
         }
 
-        const scaleX = canWidth / ew;
-        const scaleY = canHeight / eh;
+        const scaleX = this.width / ew;
+        const scaleY = this.height / eh;
 
         this.ctx.beginPath();
         this.ctx.strokeStyle = colors.ellipseOuter;
         this.ctx.lineWidth = 2;
         this.ctx.ellipse(
-            (stepData.centerX + 0.5) * scaleX + scale[0],
-            (stepData.centerY + 0.5) * scaleY + scale[1],
+            (stepData.centerX + 0.5) * scaleX + this.scale[0],
+            (stepData.centerY + 0.5) * scaleY + this.scale[1],
             stepData.radiusX * scaleX,
             stepData.radiusY * scaleY,
             0,
@@ -417,8 +416,8 @@ class Render2D {
         this.ctx.strokeStyle = colors.ellipseInner;
         this.ctx.lineWidth = 2;
         this.ctx.ellipse(
-            (stepData.centerX + 0.5) * scaleX + scale[0],
-            (stepData.centerY + 0.5) * scaleY + scale[1],
+            (stepData.centerX + 0.5) * scaleX + this.scale[0],
+            (stepData.centerY + 0.5) * scaleY + this.scale[1],
             stepData.innerRadiusX * scaleX,
             stepData.innerRadiusY * scaleY,
             0,
@@ -429,205 +428,41 @@ class Render2D {
 
         this.paintGrid();
     }
-}
 
-const render2D = {
-    paintGrid(ctx) {
-        ctx.beginPath();
-        ctx.strokeStyle = getComputedStyle(document.documentElement)
-            .getPropertyValue("--grid-color")
-            .trim();
-        ctx.lineWidth = 1;
+    resizeCanvas() {
+        if (state.viewMode === "3d") return;
 
-        const { width, height } = state.ellipse;
-        const { width: canWidth, height: canHeight, scale } = state.canvas;
+        const elHeight = this.container.clientHeight;
+        const elWidth = this.container.clientWidth;
 
-        for (let i = 0; i <= width; i++) {
-            let x = (i * canWidth) / width;
-            if (x >= canWidth) x = canWidth - 1;
-            ctx.moveTo(x + 0.5 + scale[0], scale[1]);
-            ctx.lineTo(x + 0.5 + scale[0], canHeight + scale[1]);
-        }
+        let width = elWidth;
+        let height = elHeight;
+        const { width: ellipseWidth, height: ellipseHeight } = state.ellipse;
 
-        for (let i = 0; i <= height; i++) {
-            let y = (i * canHeight) / height;
-            if (y >= canHeight) y = canHeight - 1;
-            ctx.moveTo(scale[0], y + 0.5 + scale[1]);
-            ctx.lineTo(canWidth + scale[0], y + 0.5 + scale[1]);
-        }
+        const h1 = height;
+        const w1 = (height * ellipseWidth) / ellipseHeight;
+        const w2 = width;
+        const h2 = (width * ellipseHeight) / ellipseWidth;
 
-        ctx.stroke();
-    },
-
-    drawBlock(ctx, x, y) {
-        const { width, height } = state.ellipse;
-        const { width: canWidth, height: canHeight, scale } = state.canvas;
-
-        const x1 = (x * canWidth) / width;
-        const y1 = (y * canHeight) / height;
-        const x2 = ((x + 1) * canWidth) / width;
-        const y2 = ((y + 1) * canHeight) / height;
-        const w = x2 - x1 + 0.75;
-        const h = y2 - y1 + 0.75;
-
-        ctx.fillRect(x1 + scale[0], y1 + scale[1], w, h);
-    },
-
-    getStepData(stepIndex) {
-        const {
-            width: ew,
-            height: eh,
-            innerWidth: inner_ew,
-            innerHeight: inner_eh,
-        } = state.ellipse;
-        const {
-            startingAngle,
-            totalHeight,
-            rotationDegrees,
-            rotationDirection,
-        } = state.staircase;
-
-        const cx = ew / 2.0 - 0.5;
-        const cy = eh / 2.0 - 0.5;
-        const rx = ew / 2.0;
-        const ry = eh / 2.0;
-        const inner_rx = inner_ew / 2.0;
-        const inner_ry = inner_eh / 2.0;
-
-        const arr_final = Array.from({ length: eh }, () =>
-            Array(ew).fill(false),
-        );
-
-        for (let j = 0; j < eh; j++) {
-            for (let i = 0; i < ew; i++) {
-                if (utils.boundary(i, j, cx, cy, rx, ry)) {
-                    arr_final[j][i] = true;
-                }
-            }
-        }
-
-        const stepAngleDegrees = rotationDegrees / totalHeight;
-        const angleStep = (stepAngleDegrees * Math.PI) / 180;
-        const startingAngleRadians = (startingAngle * Math.PI) / 180;
-
-        let startAngle, endAngle;
-        if (rotationDirection === 1) {
-            startAngle = stepIndex * angleStep + startingAngleRadians;
-            endAngle = startAngle + angleStep;
+        if (w1 > w2) {
+            width = w2;
+            height = h2;
         } else {
-            startAngle = startingAngleRadians - stepIndex * angleStep;
-            endAngle = startAngle - angleStep;
+            width = w1;
+            height = h1;
         }
 
-        let normStart = utils.normalizeAngle(startAngle);
-        let normEnd = utils.normalizeAngle(endAngle);
+        width *= this.scale[2];
+        height *= this.scale[3];
 
-        // Swap for clockwise rotation to get correct wedge
-        if (rotationDirection === -1) {
-            [normStart, normEnd] = [normEnd, normStart];
-        }
+        this.width = width;
+        this.height = height;
+        this.canvas.width = elWidth;
+        this.canvas.height = elHeight;
 
-        for (let j = 0; j < eh; j++) {
-            for (let i = 0; i < ew; i++) {
-                const dx = i - cx;
-                const dy = j - cy;
-                const angle = Math.atan2(dy, dx);
-                const normalizedAngle = angle < 0 ? angle + 2 * Math.PI : angle;
-
-                let inAngleRange = false;
-                if (normStart <= normEnd) {
-                    inAngleRange =
-                        normalizedAngle >= normStart &&
-                        normalizedAngle <= normEnd;
-                } else {
-                    inAngleRange =
-                        normalizedAngle >= normStart ||
-                        normalizedAngle <= normEnd;
-                }
-
-                const inRing =
-                    !utils.inside(i, j, cx, cy, inner_rx, inner_ry) &&
-                    utils.inside(i, j, cx, cy, rx, ry);
-
-                if (inAngleRange && inRing) {
-                    arr_final[j][i] = true;
-                }
-            }
-        }
-
-        return {
-            data: arr_final,
-            width: ew,
-            height: eh,
-            centerX: cx,
-            centerY: cy,
-            radiusX: rx,
-            radiusY: ry,
-            innerRadiusX: inner_rx,
-            innerRadiusY: inner_ry,
-        };
-    },
-
-    draw(ctx) {
-        const stepData = this.getStepData(state.staircase.currentStep);
-        const { data: arr_final, width: ew, height: eh } = stepData;
-        const rootStyles = getComputedStyle(document.documentElement);
-
-        const colors = {
-            canvasBg: rootStyles.getPropertyValue("--canvas-bg").trim(),
-            blockColor: rootStyles.getPropertyValue("--block-color").trim(),
-            ellipseOuter: rootStyles.getPropertyValue("--ellipse-outer").trim(),
-            ellipseInner: rootStyles.getPropertyValue("--ellipse-inner").trim(),
-        };
-
-        const { width: canWidth, height: canHeight, scale } = state.canvas;
-
-        ctx.fillStyle = colors.canvasBg;
-        ctx.fillRect(scale[0], scale[1], canWidth, canHeight);
-
-        ctx.fillStyle = colors.blockColor;
-        for (let j = 0; j < eh; j++) {
-            for (let i = 0; i < ew; i++) {
-                if (arr_final[j] && arr_final[j][i]) {
-                    this.drawBlock(ctx, i, j);
-                }
-            }
-        }
-
-        const scaleX = canWidth / ew;
-        const scaleY = canHeight / eh;
-
-        ctx.beginPath();
-        ctx.strokeStyle = colors.ellipseOuter;
-        ctx.lineWidth = 2;
-        ctx.ellipse(
-            (stepData.centerX + 0.5) * scaleX + scale[0],
-            (stepData.centerY + 0.5) * scaleY + scale[1],
-            stepData.radiusX * scaleX,
-            stepData.radiusY * scaleY,
-            0,
-            0,
-            2 * Math.PI,
-        );
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.strokeStyle = colors.ellipseInner;
-        ctx.lineWidth = 2;
-        ctx.ellipse(
-            (stepData.centerX + 0.5) * scaleX + scale[0],
-            (stepData.centerY + 0.5) * scaleY + scale[1],
-            stepData.innerRadiusX * scaleX,
-            stepData.innerRadiusY * scaleY,
-            0,
-            0,
-            2 * Math.PI,
-        );
-        ctx.stroke();
-
-        this.paintGrid(ctx);
-    },
-};
+        this.draw();
+    }
+}
 
 class Render3D {
     constructor() {
@@ -665,10 +500,10 @@ class Render3D {
             this.renderer.setSize(rect.width, rect.height);
             this.renderer.shadowMap.enabled = false;
 
-            this.container.appendChild(state.view3D.renderer.domElement);
+            this.container.appendChild(this.renderer.domElement);
 
             this.setupLighting();
-            this.setupControls(container);
+            this.setupControls(this.container);
             this.startAnimationLoop();
             this.generateStaircase();
             this.initialized = true;
@@ -1185,7 +1020,7 @@ class Render3D {
         this.scene.add(ellipse);
     }
 
-    make_stale() {
+    makeStale() {
         const rect = this.container.getBoundingClientRect();
         this.renderer.setSize(rect.width, rect.height);
         this.camera.aspect = rect.width / rect.height;
@@ -1222,13 +1057,13 @@ const keyHandlers = {
         }
 
         if (state.viewMode === "3d") {
-            state.view3D.keys[e.key.toLowerCase()] = true;
+            renderer3D.keys[e.key.toLowerCase()] = true;
         }
     },
 
     handleKeyUp(e) {
         if (state.viewMode === "3d") {
-            state.view3D.keys[e.key.toLowerCase()] = false;
+            renderer3D.keys[e.key.toLowerCase()] = false;
         }
     },
 };
@@ -1327,16 +1162,15 @@ function toggleBuilderMode() {
         builderInfo.style.display = "block";
 
         updateBuilderDisplay();
-        resizeCanvas();
     } else {
         controlsPanel.style.display = "flex";
         topBar.style.display = "flex";
         builderOverlay.style.display = "none";
         builderControls.style.display = "none";
         builderInfo.style.display = "none";
-
-        resizeCanvas();
     }
+
+    renderer2D.resizeCanvas();
 }
 
 function updateBuilderDisplay() {
@@ -1355,6 +1189,7 @@ function updateBuilderDisplay() {
 }
 
 let renderer3D = null;
+let renderer2D = null;
 
 function toggleViewMode() {
     state.viewMode = state.viewMode === "2d" ? "3d" : "2d";
@@ -1379,11 +1214,11 @@ function toggleViewMode() {
             stepNav.style.display = "none";
         }
 
-        if (!state.view3D.scene) {
+        if (!renderer3D) {
             renderer3D = new Render3D();
         } else {
             renderer3D.generateStaircase();
-            renderer3D.make_stale();
+            renderer3D.makeStale();
         }
     } else {
         canvas2D.style.display = "block";
@@ -1393,46 +1228,8 @@ function toggleViewMode() {
             '<span class="material-icons">view_in_ar</span> 3D Mode';
         viewModeControl.style.display = "none";
         stepNav.style.display = "flex";
-        resizeCanvas();
+        renderer2D.resizeCanvas();
     }
-}
-
-function resizeCanvas() {
-    if (state.viewMode === "3d") return;
-
-    const d = document.getElementById("canvas-container");
-    const elHeight = d.clientHeight;
-    const elWidth = d.clientWidth;
-
-    let width = elWidth;
-    let height = elHeight;
-    const { width: ellipseWidth, height: ellipseHeight } = state.ellipse;
-    const { scale } = state.canvas;
-
-    const h1 = height;
-    const w1 = (height * ellipseWidth) / ellipseHeight;
-    const w2 = width;
-    const h2 = (width * ellipseHeight) / ellipseWidth;
-
-    if (w1 > w2) {
-        width = w2;
-        height = h2;
-    } else {
-        width = w1;
-        height = h1;
-    }
-
-    width *= scale[2];
-    height *= scale[3];
-
-    const can = document.getElementById("myCanvas");
-    state.canvas.width = width;
-    state.canvas.height = height;
-    can.width = elWidth;
-    can.height = elHeight;
-
-    const ctx = can.getContext("2d");
-    new Render2D(ctx).draw();
 }
 
 function toggleTheme() {
@@ -1448,9 +1245,9 @@ function toggleTheme() {
     }
 
     if (state.viewMode === "3d") {
-        render3D.updateTheme();
+        renderer3D.updateTheme();
     } else {
-        resizeCanvas();
+        renderer2D.resizeCanvas();
     }
 }
 
@@ -1475,25 +1272,22 @@ window.addEventListener("load", () => {
     keyHandlers.init();
 
     state.viewMode = "3d";
-    render3D.init();
+    renderer3D = new Render3D();
+    let can = document.getElementById("myCanvas");
+    renderer2D = new Render2D(can.getContext("2d"));
 });
 
 window.addEventListener("resize", () => {
-    if (state.viewMode === "3d" && state.view3D.renderer) {
-        const container = document.getElementById("scene3d");
-        const rect = container.getBoundingClientRect();
-        state.view3D.renderer.setSize(rect.width, rect.height);
-        state.view3D.camera.aspect = rect.width / rect.height;
-        state.view3D.camera.updateProjectionMatrix();
-        state.view3D.needsRender = true;
-    } else if (state.viewMode === "2d") {
-        resizeCanvas();
+    if (state.viewMode === "3d" && renderer3D) {
+        renderer3D.makeStale();
+    } else if (state.viewMode === "2d" && renderer2D) {
+        renderer2D.resizeCanvas();
     }
 });
 
 window.addEventListener("beforeunload", () => {
     keyHandlers.cleanup();
     if (state.viewMode === "3d") {
-        render3D.cleanup();
+        renderer3D.cleanup();
     }
 });
