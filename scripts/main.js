@@ -16,33 +16,16 @@ const CONSTANTS = {
     },
 };
 
-const state = {
-    ellipse: {
-        width: 32,
-        height: 32,
-        innerWidth: 20,
-        innerHeight: 20,
-        outerMirrored: true,
-        innerMirrored: true,
-    },
-    staircase: {
-        currentStep: 0,
-        totalHeight: 20,
-        rotationDegrees: 360,
-        verticalDirection: 1,
-        rotationDirection: 1,
-        showSingleStep: false,
-        startingAngle: 0,
-    },
-    viewMode: "3d",
-    builderMode: false,
+const THEME = Object.freeze({
+    DARK: Symbol("Dark"),
+    LIGHT: Symbol("Light"),
+});
+
+const LS_KEYS = {
+    THEME: Symbol("Theme"),
 };
 
 const utils = {
-    isDarkTheme() {
-        return document.documentElement.getAttribute("data-theme") === "dark";
-    },
-
     clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
     },
@@ -73,6 +56,95 @@ const utils = {
         return angle < 0 ? angle + 2 * Math.PI : angle;
     },
 };
+
+class State {
+    ellipse = {
+        width: 32,
+        height: 32,
+        innerWidth: 20,
+        innerHeight: 20,
+        outerMirrored: true,
+        innerMirrored: true,
+    };
+    staircase = {
+        currentStep: 0,
+        totalHeight: 20,
+        rotationDegrees: 360,
+        verticalDirection: 1,
+        rotationDirection: 1,
+        showSingleStep: false,
+        startingAngle: 0,
+    };
+    viewMode = "3d";
+    builderMode = false;
+
+    #theme = null;
+
+    constructor() {
+        window.addEventListener("load", () => {
+            this.theme = this.theme;
+        });
+    }
+
+    get theme() {
+        if (this.#theme) {
+            return this.#theme;
+        }
+
+        const savedThemeStr = localStorage.getItem(LS_KEYS.THEME.toString());
+
+        if (savedThemeStr) {
+            let savedTheme = THEME.DARK;
+            if (savedThemeStr === THEME.LIGHT.toString()) {
+                savedTheme = THEME.LIGHT;
+            }
+            this.theme = savedTheme;
+            return savedTheme;
+        }
+
+        let theme = THEME.DARK;
+        if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+            theme = THEME.LIGHT;
+        }
+
+        this.theme = theme;
+        return theme;
+    }
+
+    set theme(v) {
+        this.#theme = v;
+        console.log(v);
+        localStorage.setItem(LS_KEYS.THEME.toString(), v.toString());
+        this.#updateTheme();
+    }
+
+    #updateTheme() {
+        const doc = document.documentElement;
+        console.log("Hiya");
+        switch (this.#theme) {
+            case THEME.LIGHT:
+                doc.setAttribute("data-theme", "light");
+                break;
+            case THEME.DARK:
+                doc.setAttribute("data-theme", "dark");
+                break;
+        }
+
+        const themeIcon = document.getElementById("theme-icon");
+        if (!themeIcon) return;
+
+        switch (this.#theme) {
+            case THEME.LIGHT:
+                themeIcon.textContent = "light_mode";
+                break;
+            case THEME.DARK:
+                themeIcon.textContent = "dark_mode";
+                break;
+        }
+    }
+}
+
+const state = new State();
 
 const controls = {
     adjustValue(config, delta) {
@@ -124,9 +196,9 @@ const controls = {
 
     updateView() {
         if (state.viewMode === "3d") {
-            render3D.generateStaircase();
+            renderer3D.generateStaircase();
         } else {
-            resizeCanvas();
+            renderer2D.resizeCanvas();
         }
     },
 
@@ -474,15 +546,17 @@ class Render3D {
         this.cameraTarget = new THREE.Vector3(0, 0, 0);
         this.renderer = null;
         this.initialized = false;
+        this.container = null;
 
+        window.addEventListener("load", () => this.init());
+    }
+
+    init() {
         this.container = document.getElementById("scene3d");
         const rect = this.container.getBoundingClientRect();
 
         try {
             this.scene = new THREE.Scene();
-            this.scene.background = new THREE.Color(
-                utils.isDarkTheme() ? 0x141218 : 0xfefbff,
-            );
 
             this.camera = new THREE.PerspectiveCamera(
                 75,
@@ -503,14 +577,18 @@ class Render3D {
             this.container.appendChild(this.renderer.domElement);
 
             this.setupLighting();
-            this.setupControls(this.container);
+            this.setupControls();
             this.startAnimationLoop();
             this.generateStaircase();
+            this.updateTheme();
             this.initialized = true;
         } catch (error) {
             console.error("Failed to initialize 3D mode:", error);
             alert("3D visualization failed to initialize.");
         }
+
+        window.addEventListener("resize", () => this.makeStale());
+        window.addEventListener("beforeunload", () => this.cleanup());
     }
 
     setupLighting() {
@@ -728,36 +806,54 @@ class Render3D {
 
     updateTheme() {
         if (this.scene) {
-            this.scene.background = new THREE.Color(
-                utils.isDarkTheme() ? 0x141218 : 0xfefbff,
-            );
+            switch (state.theme) {
+                case THEME.LIGHT:
+                    this.scene.background = new THREE.Color(0xfefbff);
+                    break;
+                case THEME.DARK:
+                    this.scene.background = new THREE.Color(0x141218);
+                    break;
+            }
 
-            const isDark = utils.isDarkTheme();
             this.scene.traverse((object) => {
                 if (object.isMesh || object.isLine) {
                     if (object.userData.isBlock && object.material) {
                         if (object.material.color) {
-                            object.material.color.setHex(
-                                isDark ? 0xe6e0e9 : 0x1d1b20,
-                            );
+                            switch (state.theme) {
+                                case THEME.LIGHT:
+                                    object.material.color.setHex(0x1d1b20);
+                                    break;
+                                case THEME.DARK:
+                                    object.material.color.setHex(0xe6e0e9);
+                                    break;
+                            }
                         }
                     } else if (object.userData.isEllipse && object.material) {
-                        const isOuter = object.userData.ellipseType === "outer";
-                        object.material.color.setHex(
-                            isOuter
-                                ? isDark
-                                    ? 0xf2b8b5
-                                    : 0xd32f2f
-                                : isDark
-                                  ? 0xa8c7fa
-                                  : 0x1565c0,
-                        );
+                        if (object.userData.ellipseType === "outer") {
+                            switch (state.theme) {
+                                case THEME.LIGHT:
+                                    object.material.color.setHex(0xd32f2f);
+                                    break;
+                                case THEME.DARK:
+                                    object.material.color.setHex(0xf2b8b5);
+                                    break;
+                            }
+                        } else {
+                            switch (state.theme) {
+                                case THEME.LIGHT:
+                                    object.material.color.setHex(0x1565c0);
+                                    break;
+                                case THEME.DARK:
+                                    object.material.color.setHex(0xa8c7fa);
+                                    break;
+                            }
+                        }
                     }
                 }
             });
-
-            this.needsRender = true;
         }
+
+        this.needsRender = true;
     }
 
     generateStaircase() {
@@ -795,9 +891,12 @@ class Render3D {
         const inner_rx = inner_ew / 2.0;
         const inner_ry = inner_eh / 2.0;
 
-        const isDark = utils.isDarkTheme();
+        let materialColor = 0xe6e0e9;
+        if (state.theme !== THEME.DARK) {
+            materialColor = 0x1d1b20;
+        }
         const blockMaterial = new THREE.MeshLambertMaterial({
-            color: isDark ? 0xe6e0e9 : 0x1d1b20,
+            color: materialColor,
         });
 
         const stepAngleDegrees = rotationDegrees / totalHeight;
@@ -856,11 +955,17 @@ class Render3D {
             );
         }
 
+        let outerEllipseColor = 0xf2b8b5;
+        let innerEllipseColor = 0xa8c7fa;
+        if (state.theme !== THEME.DARK) {
+            outerEllipseColor = 0xd32f2f;
+            innerEllipseColor = 0x1565c0;
+        }
         this.drawEllipseRing(
             rx * 0.5,
             ry * 0.5,
             0,
-            isDark ? 0xf2b8b5 : 0xd32f2f,
+            outerEllipseColor,
             CONSTANTS.OPACITY.ELLIPSE_OUTLINE,
             "outer",
         );
@@ -868,7 +973,7 @@ class Render3D {
             inner_rx * 0.5,
             inner_ry * 0.5,
             0,
-            isDark ? 0xa8c7fa : 0x1565c0,
+            innerEllipseColor,
             CONSTANTS.OPACITY.ELLIPSE_OUTLINE,
             "inner",
         );
@@ -879,7 +984,7 @@ class Render3D {
                 rx * 0.5,
                 ry * 0.5,
                 topY,
-                isDark ? 0xf2b8b5 : 0xd32f2f,
+                outerEllipseColor,
                 CONSTANTS.OPACITY.ELLIPSE_OUTLINE,
                 "outer",
             );
@@ -887,7 +992,7 @@ class Render3D {
                 inner_rx * 0.5,
                 inner_ry * 0.5,
                 topY,
-                isDark ? 0xa8c7fa : 0x1565c0,
+                innerEllipseColor,
                 CONSTANTS.OPACITY.ELLIPSE_OUTLINE,
                 "inner",
             );
@@ -970,8 +1075,12 @@ class Render3D {
 
         if (withEdges) {
             const edgeGeometry = new THREE.EdgesGeometry(geometry);
+            let materialColor = 0x49454f;
+            if (state.theme !== THEME.DARK) {
+                materialColor = 0xcac4d0;
+            }
             const edgeMaterial = new THREE.LineBasicMaterial({
-                color: utils.isDarkTheme() ? 0x49454f : 0xcac4d0,
+                color: materialColor,
                 transparent: true,
                 opacity: CONSTANTS.OPACITY.EDGE,
             });
@@ -1188,7 +1297,7 @@ function updateBuilderDisplay() {
         `Spiral: ${state.staircase.rotationDirection === 1 ? "CCW" : "CW"}`;
 }
 
-let renderer3D = null;
+let renderer3D = new Render3D();
 let renderer2D = null;
 
 function toggleViewMode() {
@@ -1214,12 +1323,8 @@ function toggleViewMode() {
             stepNav.style.display = "none";
         }
 
-        if (!renderer3D) {
-            renderer3D = new Render3D();
-        } else {
-            renderer3D.generateStaircase();
-            renderer3D.makeStale();
-        }
+        renderer3D.generateStaircase();
+        renderer3D.makeStale();
     } else {
         canvas2D.style.display = "block";
         scene3D.style.display = "none";
@@ -1233,16 +1338,12 @@ function toggleViewMode() {
 }
 
 function toggleTheme() {
-    const currentTheme =
-        document.documentElement.getAttribute("data-theme") || "dark";
-    const newTheme = currentTheme === "light" ? "dark" : "light";
-
-    document.documentElement.setAttribute("data-theme", newTheme);
-    const themeIcon = document.getElementById("theme-icon");
-    if (themeIcon) {
-        themeIcon.textContent =
-            newTheme === "light" ? "dark_mode" : "light_mode";
+    let newTheme = THEME.DARK;
+    if (state.theme === THEME.DARK) {
+        newTheme = THEME.LIGHT;
     }
+
+    state.theme = newTheme;
 
     if (state.viewMode === "3d") {
         renderer3D.updateTheme();
@@ -1263,31 +1364,19 @@ window.addEventListener("load", () => {
     controls.updateMirrorButton("outer-mirror", state.ellipse.outerMirrored);
     controls.updateMirrorButton("inner-mirror", state.ellipse.innerMirrored);
 
-    document.documentElement.setAttribute("data-theme", "dark");
-    const themeIcon = document.getElementById("theme-icon");
-    if (themeIcon) {
-        themeIcon.textContent = "light_mode";
-    }
-
     keyHandlers.init();
 
     state.viewMode = "3d";
-    renderer3D = new Render3D();
     let can = document.getElementById("myCanvas");
     renderer2D = new Render2D(can.getContext("2d"));
 });
 
 window.addEventListener("resize", () => {
-    if (state.viewMode === "3d" && renderer3D) {
-        renderer3D.makeStale();
-    } else if (state.viewMode === "2d" && renderer2D) {
+    if (state.viewMode === "2d" && renderer2D) {
         renderer2D.resizeCanvas();
     }
 });
 
 window.addEventListener("beforeunload", () => {
     keyHandlers.cleanup();
-    if (state.viewMode === "3d") {
-        renderer3D.cleanup();
-    }
 });
